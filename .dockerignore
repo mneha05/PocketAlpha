@@ -1,0 +1,8 @@
+.git
+.github
+android
+docs
+README.md
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal

@@ -251,13 +251,13 @@ Every push and pull request also runs the suite through [GitHub Actions](.github
 
 ## Deployment
 
-The backend is ready for a Docker-based Railway service:
+The repository root is ready for a Docker-based Railway service:
 
 1. Create a Railway service from this repository.
-2. Set the root directory to `backend`.
+2. Keep the root directory at `/`; the root [`Dockerfile`](Dockerfile) copies only the backend runtime.
 3. Add a strong, randomly generated `AUTH_SECRET`.
 4. Set `DB_PATH` to a path on a mounted persistent volume, such as `/data/pocketalpha.db`.
-5. Railway builds [`backend/Dockerfile`](backend/Dockerfile) and checks `GET /health` using [`backend/railway.json`](backend/railway.json).
+5. Railway checks `GET /health` using the root [`railway.json`](railway.json).
 6. Replace `API_BASE_URL` in [`android/app/build.gradle.kts`](android/app/build.gradle.kts) with the generated HTTPS domain before producing a release build.
 
 ```text
@@ -274,6 +274,8 @@ The Android client is a native application, so deployment means distributing an 
 
 ```text
 PocketAlpha/
+├── Dockerfile                  # Root-level Railway production image
+├── railway.json               # Root-level health and restart configuration
 ├── android/
 │   ├── app/src/main/java/com/nehamahesh/pocketalpha/
 │   │   ├── ApiClient.kt        # HTTP transport + JSON mapping + session store
