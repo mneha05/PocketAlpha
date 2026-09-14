@@ -34,6 +34,51 @@ const json = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 
+const landingPage = res => {
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  res.end(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PocketAlpha API</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; color: #f4f7f1; background: radial-gradient(circle at 25% 20%, #253614 0, #0b0e0b 32rem); }
+    main { width: min(680px, calc(100% - 32px)); padding: 42px; border: 1px solid #303730; border-radius: 28px; background: rgba(17, 20, 17, .92); box-shadow: 0 24px 80px rgba(0,0,0,.45); }
+    .brand { display: flex; align-items: center; gap: 12px; letter-spacing: .08em; font-weight: 800; }
+    .mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: #080a09; background: #b7f64a; }
+    h1 { margin: 42px 0 12px; max-width: 520px; font-size: clamp(2.4rem, 8vw, 4.5rem); line-height: .96; letter-spacing: -.055em; }
+    p { color: #aeb7aa; line-height: 1.65; }
+    .status { display: inline-flex; align-items: center; gap: 9px; margin-top: 18px; padding: 8px 12px; border-radius: 999px; color: #b7f64a; background: #243416; font-size: .85rem; font-weight: 700; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #b7f64a; box-shadow: 0 0 18px #b7f64a; }
+    nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 34px; }
+    a { padding: 16px 18px; border: 1px solid #303730; border-radius: 14px; color: #f4f7f1; background: #191d19; text-decoration: none; font-weight: 700; }
+    a:hover { border-color: #b7f64a; color: #b7f64a; }
+    small { display: block; margin-top: 34px; color: #778075; }
+    @media (max-width: 520px) { main { padding: 28px; } nav { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">✓</span> POCKETALPHA</div>
+    <h1>Paper investing,<br />end to end.</h1>
+    <p>The PocketAlpha API is online. It powers authenticated watchlists, simulated market data, transactional paper orders, and portfolio accounting for the native Android client.</p>
+    <div class="status"><span class="dot"></span> All systems operational</div>
+    <nav>
+      <a href="/health">Health check →</a>
+      <a href="/api/market/overview">Market overview →</a>
+    </nav>
+    <small>Simulated prices and funds · No brokerage connectivity</small>
+  </main>
+</body>
+</html>`);
+};
+
 const readJson = async req => {
   let text = "";
   for await (const chunk of req) {
@@ -206,6 +251,10 @@ export function createApp({ dbPath = process.env.DB_PATH || "pocketalpha.db", se
     const path = url.pathname;
 
     try {
+      if (req.method === "GET" && path === "/") {
+        return landingPage(res);
+      }
+
       if (req.method === "GET" && path === "/health") {
         return json(res, 200, { status: "ok", service: "pocketalpha-api", timestamp: new Date().toISOString() });
       }

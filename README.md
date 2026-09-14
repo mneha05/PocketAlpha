@@ -12,6 +12,7 @@ Explore the market, build a watchlist, inspect price history, execute simulated 
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 
 [![Backend tests](https://github.com/mneha05/PocketAlpha/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/mneha05/PocketAlpha/actions/workflows/backend-tests.yml)
+[![Live API](https://img.shields.io/badge/API-live-B7F64A?logo=railway&logoColor=black)](https://pocketalpha-production.up.railway.app/)
 ![Android API](https://img.shields.io/badge/Android-API_26%2B-3DDC84?logo=android&logoColor=white)
 ![Paper trading](https://img.shields.io/badge/trading-simulated-B7F64A?logoColor=black)
 
@@ -214,7 +215,7 @@ curl http://localhost:8080/health
 3. Start an emulator running API 26 or newer.
 4. Run the `app` configuration.
 
-The emulator reaches the host API through `http://10.0.2.2:8080/api/`. For a physical device, change `BuildConfig.API_BASE_URL` in `android/app/build.gradle.kts` to the development machine's LAN address.
+The committed build targets the live Railway API. To work against the local backend, temporarily set `BuildConfig.API_BASE_URL` in `android/app/build.gradle.kts` to `http://10.0.2.2:8080/api/` for an emulator or to the development machine's LAN address for a physical device.
 
 <details>
 <summary><strong>Demo account</strong></summary>
@@ -251,6 +252,8 @@ Every push and pull request also runs the suite through [GitHub Actions](.github
 
 ## Deployment
 
+**Live service:** [`pocketalpha-production.up.railway.app`](https://pocketalpha-production.up.railway.app/)
+
 The repository root is ready for a Docker-based Railway service:
 
 1. Create a Railway service from this repository.
@@ -258,7 +261,7 @@ The repository root is ready for a Docker-based Railway service:
 3. Add a strong, randomly generated `AUTH_SECRET`.
 4. Set `DB_PATH` to a path on a mounted persistent volume, such as `/data/pocketalpha.db`.
 5. Railway checks `GET /health` using the root [`railway.json`](railway.json).
-6. Replace `API_BASE_URL` in [`android/app/build.gradle.kts`](android/app/build.gradle.kts) with the generated HTTPS domain before producing a release build.
+6. [`API_BASE_URL`](android/app/build.gradle.kts) already targets the live HTTPS service; update it if the Railway domain changes.
 
 ```text
 AUTH_SECRET=<long-random-production-secret>

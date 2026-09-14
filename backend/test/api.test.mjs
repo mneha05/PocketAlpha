@@ -19,6 +19,9 @@ const call = (base, path, { method = "GET", token, body } = {}) => fetch(base + 
 });
 
 test("health and public market endpoints respond", async () => withApi(async base => {
+  const landing = await call(base, "/");
+  assert.equal(landing.status, 200);
+  assert.match(await landing.text(), /PocketAlpha API is online/);
   const health = await call(base, "/health");
   assert.equal(health.status, 200);
   assert.equal((await health.json()).status, "ok");
