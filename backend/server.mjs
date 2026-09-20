@@ -93,6 +93,19 @@ const normalizeEmail = value => String(value ?? "").trim().toLowerCase();
 const normalizeSymbol = value => String(value ?? "").trim().toUpperCase();
 const roundMoney = value => Math.round((value + Number.EPSILON) * 100) / 100;
 
+const requestMarketOverview = async marketServiceUrl => {
+  const response = await fetch(`${marketServiceUrl}/v1/market/overview`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(1500)
+  });
+  if (!response.ok) throw new Error(`Go market service returned ${response.status}`);
+  const overview = await response.json();
+  if (!Array.isArray(overview.indices) || !Array.isArray(overview.movers)) {
+    throw new Error("Go market service returned an invalid overview");
+  }
+  return overview;
+};
+
 const hashPassword = password => {
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, 64).toString("hex");
@@ -109,7 +122,11 @@ const verifyPassword = (password, stored) => {
 
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
 
-export function createApp({ dbPath = process.env.DB_PATH || "pocketalpha.db", secret = process.env.AUTH_SECRET || "dev-only-change-me" } = {}) {
+export function createApp({
+  dbPath = process.env.DB_PATH || "pocketalpha.db",
+  secret = process.env.AUTH_SECRET || "dev-only-change-me",
+  marketServiceUrl = process.env.MARKET_SERVICE_URL?.replace(/\/+$/, "")
+} = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -285,8 +302,15 @@ export function createApp({ dbPath = process.env.DB_PATH || "pocketalpha.db", se
       }
 
       if (req.method === "GET" && path === "/api/market/overview") {
+        if (marketServiceUrl) {
+          try {
+            return json(res, 200, await requestMarketOverview(marketServiceUrl));
+          } catch (error) {
+            console.warn("Go market service unavailable; using local fallback", { error: error.message });
+          }
+        }
         const movers = DEFAULT_SYMBOLS.map(quoteFor).sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 6);
-        return json(res, 200, { indices: INDEX_SNAPSHOTS, movers, asOf: new Date().toISOString(), source: "PocketAlpha simulated market" });
+        return json(res, 200, { indices: INDEX_SNAPSHOTS, movers, asOf: new Date().toISOString(), source: "PocketAlpha simulated market", service: "node-fallback" });
       }
 
       if (req.method === "GET" && path === "/api/quotes") {
