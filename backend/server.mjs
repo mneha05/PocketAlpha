@@ -79,6 +79,74 @@ const landingPage = res => {
 </html>`);
 };
 
+const marketOverviewPage = (res, overview) => {
+  const indexCards = overview.indices.map(index => `
+    <article class="card">
+      <span>${index.symbol}</span>
+      <strong>${Number(index.price).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong>
+      <em class="${index.changePercent >= 0 ? "up" : "down"}">${index.changePercent >= 0 ? "+" : ""}${index.changePercent}%</em>
+    </article>`).join("");
+  const moverRows = overview.movers.map(stock => `
+    <tr>
+      <td><strong>${stock.symbol}</strong><small>${stock.name}</small></td>
+      <td>$${Number(stock.price).toFixed(2)}</td>
+      <td class="${stock.changePercent >= 0 ? "up" : "down"}">${stock.changePercent >= 0 ? "+" : ""}${stock.changePercent}%</td>
+      <td>${stock.sector}</td>
+    </tr>`).join("");
+
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PocketAlpha Market Overview</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #090b09; color: #f4f7f1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 15% 0, #273b13 0, #090b09 34rem); }
+    main { width: min(1000px, calc(100% - 32px)); margin: auto; padding: 56px 0 80px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 28px; }
+    .eyebrow { color: #b7f64a; font-size: .78rem; font-weight: 800; letter-spacing: .13em; }
+    h1 { margin: 10px 0 4px; font-size: clamp(2.4rem, 7vw, 5rem); letter-spacing: -.06em; line-height: .95; }
+    p, small { color: #919b8e; }
+    .status { padding: 9px 13px; border: 1px solid #3a4c28; border-radius: 999px; color: #b7f64a; background: #18230f; font-weight: 700; white-space: nowrap; }
+    .indices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+    .card, .panel { border: 1px solid #292f29; background: rgba(19, 23, 19, .92); box-shadow: 0 22px 70px rgba(0,0,0,.25); }
+    .card { display: grid; gap: 10px; padding: 22px; border-radius: 20px; }
+    .card span { color: #aeb7aa; font-weight: 700; }
+    .card strong { font-size: 1.7rem; }
+    em { font-style: normal; font-weight: 800; }
+    .up { color: #b7f64a; }
+    .down { color: #ff7b72; }
+    .panel { overflow: hidden; border-radius: 22px; }
+    .panel h2 { margin: 0; padding: 22px 24px; border-bottom: 1px solid #292f29; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 16px 24px; text-align: left; border-bottom: 1px solid #242924; }
+    th { color: #7f897c; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
+    td small { display: block; margin-top: 4px; }
+    footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 20px; font-size: .85rem; }
+    a { color: #b7f64a; }
+    @media (max-width: 700px) { header, footer { align-items: start; flex-direction: column; } .indices { grid-template-columns: 1fr; } th:last-child, td:last-child { display: none; } th, td { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><div class="eyebrow">POCKETALPHA · LIVE MARKET SERVICE</div><h1>Market overview</h1><p>Simulated market data for paper-investing workflows.</p></div>
+      <div class="status">● Go service online</div>
+    </header>
+    <section class="indices">${indexCards}</section>
+    <section class="panel">
+      <h2>Top movers</h2>
+      <table><thead><tr><th>Company</th><th>Price</th><th>Change</th><th>Sector</th></tr></thead><tbody>${moverRows}</tbody></table>
+    </section>
+    <footer><span>Updated ${new Date(overview.asOf).toLocaleString("en-US", { timeZone: "UTC" })} UTC</span><a href="/api/market/overview?format=json">View raw JSON →</a></footer>
+  </main>
+</body>
+</html>`);
+};
+
 const readJson = async req => {
   let text = "";
   for await (const chunk of req) {
@@ -302,15 +370,20 @@ export function createApp({
       }
 
       if (req.method === "GET" && path === "/api/market/overview") {
+        let overview;
         if (marketServiceUrl) {
           try {
-            return json(res, 200, await requestMarketOverview(marketServiceUrl));
+            overview = await requestMarketOverview(marketServiceUrl);
           } catch (error) {
             console.warn("Go market service unavailable; using local fallback", { error: error.message });
           }
         }
-        const movers = DEFAULT_SYMBOLS.map(quoteFor).sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 6);
-        return json(res, 200, { indices: INDEX_SNAPSHOTS, movers, asOf: new Date().toISOString(), source: "PocketAlpha simulated market", service: "node-fallback" });
+        if (!overview) {
+          const movers = DEFAULT_SYMBOLS.map(quoteFor).sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 6);
+          overview = { indices: INDEX_SNAPSHOTS, movers, asOf: new Date().toISOString(), source: "PocketAlpha simulated market", service: "node-fallback" };
+        }
+        const wantsHtml = req.headers.accept?.includes("text/html") && url.searchParams.get("format") !== "json";
+        return wantsHtml ? marketOverviewPage(res, overview) : json(res, 200, overview);
       }
 
       if (req.method === "GET" && path === "/api/quotes") {

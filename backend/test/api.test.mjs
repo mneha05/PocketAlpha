@@ -55,6 +55,18 @@ test("market overview is served by the Go service", async () => {
   }
 });
 
+test("market overview renders HTML for browsers and JSON on request", async () => withApi(async base => {
+  const page = await fetch(`${base}/api/market/overview`, { headers: { accept: "text/html" } });
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get("content-type"), /text\/html/);
+  assert.match(await page.text(), /Market overview/);
+
+  const raw = await fetch(`${base}/api/market/overview?format=json`, { headers: { accept: "text/html" } });
+  assert.equal(raw.status, 200);
+  assert.match(raw.headers.get("content-type"), /application\/json/);
+  assert.equal((await raw.json()).service, "node-fallback");
+}));
+
 test("market overview falls back when the Go service is unavailable", async () => withApi(async base => {
   const response = await call(base, "/api/market/overview");
   assert.equal(response.status, 200);
