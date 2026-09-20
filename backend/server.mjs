@@ -110,7 +110,9 @@ const marketOverviewPage = (res, overview) => {
     .eyebrow { color: #b7f64a; font-size: .78rem; font-weight: 800; letter-spacing: .13em; }
     h1 { margin: 10px 0 4px; font-size: clamp(2.4rem, 7vw, 5rem); letter-spacing: -.06em; line-height: .95; }
     p, small { color: #919b8e; }
-    .status { padding: 9px 13px; border: 1px solid #3a4c28; border-radius: 999px; color: #b7f64a; background: #18230f; font-weight: 700; white-space: nowrap; }
+    .status { padding: 10px 14px; border: 1px solid #3a4c28; border-radius: 999px; color: #b7f64a; background: #18230f; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; transition: border-color .2s, transform .2s, background .2s; }
+    .status:hover { border-color: #b7f64a; background: #223214; transform: translateY(-1px); }
+    .status:disabled { cursor: wait; opacity: .75; transform: none; }
     .indices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
     .card, .panel { border: 1px solid #292f29; background: rgba(19, 23, 19, .92); box-shadow: 0 22px 70px rgba(0,0,0,.25); }
     .card { display: grid; gap: 10px; padding: 22px; border-radius: 20px; }
@@ -134,7 +136,7 @@ const marketOverviewPage = (res, overview) => {
   <main>
     <header>
       <div><div class="eyebrow">POCKETALPHA · LIVE MARKET SERVICE</div><h1>Market overview</h1><p>Simulated market data for paper-investing workflows.</p></div>
-      <div class="status">● Go service online</div>
+      <button class="status" id="health-check" type="button" title="Click to check the live Go service">● Go service online · Check status</button>
     </header>
     <section class="indices">${indexCards}</section>
     <section class="panel">
@@ -143,6 +145,23 @@ const marketOverviewPage = (res, overview) => {
     </section>
     <footer><span>Updated ${new Date(overview.asOf).toLocaleString("en-US", { timeZone: "UTC" })} UTC</span><a href="/api/market/overview?format=json">View raw JSON →</a></footer>
   </main>
+  <script>
+    const healthButton = document.querySelector("#health-check");
+    healthButton.addEventListener("click", async () => {
+      healthButton.disabled = true;
+      healthButton.textContent = "Checking live service…";
+      try {
+        const response = await fetch("/api/market/overview?format=json", { cache: "no-store", headers: { accept: "application/json" } });
+        const result = await response.json();
+        if (!response.ok || result.service !== "go-market-service") throw new Error("Go service unavailable");
+        healthButton.textContent = "✓ Go service online · checked " + new Date().toLocaleTimeString();
+      } catch {
+        healthButton.textContent = "⚠ Go service check failed · Try again";
+      } finally {
+        healthButton.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>`);
 };
@@ -192,7 +211,7 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url")
 
 export function createApp({
   dbPath = process.env.DB_PATH || "pocketalpha.db",
-  secret = process.env.AUTH_SECRET || "dev-only-change-me",
+  secret = process.env.AUTH_SECRET || randomBytes(32).toString("hex"),
   marketServiceUrl = process.env.MARKET_SERVICE_URL?.replace(/\/+$/, "")
 } = {}) {
   const db = new DatabaseSync(dbPath);
@@ -491,9 +510,10 @@ export function createApp({
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   const { server, db } = createApp();
-  const email = "demo@pocketalpha.app";
-  if (!db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
-    const result = db.prepare("INSERT INTO users(name, email, password_hash) VALUES (?, ?, ?)").run("Demo Investor", email, hashPassword("DemoPass123!"));
+  const demoEmail = normalizeEmail(process.env.DEMO_EMAIL);
+  const demoPassword = process.env.DEMO_PASSWORD;
+  if (demoEmail && demoPassword && !db.prepare("SELECT id FROM users WHERE email = ?").get(demoEmail)) {
+    const result = db.prepare("INSERT INTO users(name, email, password_hash) VALUES (?, ?, ?)").run("Demo Investor", demoEmail, hashPassword(demoPassword));
     for (const symbol of ["AAPL", "NVDA", "HOOD"]) db.prepare("INSERT INTO watchlist(user_id, symbol) VALUES (?, ?)").run(Number(result.lastInsertRowid), symbol);
   }
   const port = Number(process.env.PORT || 8080);

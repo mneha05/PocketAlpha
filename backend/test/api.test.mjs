@@ -60,6 +60,8 @@ test("market overview renders HTML for browsers and JSON on request", async () =
   assert.equal(page.status, 200);
   assert.match(page.headers.get("content-type"), /text\/html/);
   assert.match(await page.text(), /Market overview/);
+  const interactivePage = await fetch(`${base}/api/market/overview`, { headers: { accept: "text/html" } });
+  assert.match(await interactivePage.text(), /id="health-check"/);
 
   const raw = await fetch(`${base}/api/market/overview?format=json`, { headers: { accept: "text/html" } });
   assert.equal(raw.status, 200);
