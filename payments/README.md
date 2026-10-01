@@ -78,6 +78,35 @@ scala-cli run   payments/scala/src/main/scala/Reconciliation.scala   payments/sc
 scala-cli run   payments/scala/src/main/scala/Reconciliation.scala   payments/scala/src/test/scala/ReconciliationCheck.scala
 ```
 
+## End-to-end Ruby → Scala path
+
+The CI workflow also runs a cross-language contract:
+
+```text
+Ruby payment service
+   |
+   | exports internal_payments.csv + settlements.csv
+   v
+Scala reconciliation CLI
+   |
+   +--> verifies all payments settle exactly once
+   +--> exits non-zero on any reconciliation issue
+```
+
+Run it locally:
+
+```bash
+ruby payments/ruby/bin/export_reconciliation_fixture.rb /tmp/ledgerbridge
+
+scala-cli run \
+  payments/scala/src/main/scala/Reconciliation.scala \
+  payments/scala/src/main/scala/ReconciliationCli.scala -- \
+  /tmp/ledgerbridge/internal_payments.csv \
+  /tmp/ledgerbridge/settlements.csv
+```
+
+A clean run reports `matched=3` and `issues=0`.
+
 ## What this project demonstrates
 
 This code is evidence of **hands-on Ruby and Scala usage**, but the honest framing is still that both are newer languages for this project. The interesting part is applying existing systems fundamentals—state machines, invariants, idempotency, accounting consistency, typed data modeling, and reconciliation—in unfamiliar language ecosystems.
