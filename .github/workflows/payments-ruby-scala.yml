@@ -1,0 +1,45 @@
+name: LedgerBridge Ruby + Scala
+
+on:
+  push:
+    paths:
+      - "payments/**"
+      - ".github/workflows/payments-ruby-scala.yml"
+  pull_request:
+    paths:
+      - "payments/**"
+      - ".github/workflows/payments-ruby-scala.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ruby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Syntax
+        run: ruby -c payments/ruby/lib/ledger_bridge.rb
+      - name: Tests
+        run: ruby -Ipayments/ruby/lib payments/ruby/test/ledger_bridge_test.rb
+      - name: Demo
+        run: ruby payments/ruby/bin/demo.rb > /tmp/ledgerbridge-demo.json
+      - name: Verify balanced demo
+        run: grep -q '"ledger_balanced": true' /tmp/ledgerbridge-demo.json
+
+  scala:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: VirtusLab/scala-cli-setup@v1
+      - name: Compile
+        run: scala-cli compile payments/scala/src/main/scala
+      - name: Reconciliation checks
+        run: |
+          scala-cli run             payments/scala/src/main/scala/Reconciliation.scala             payments/scala/src/test/scala/ReconciliationCheck.scala
+      - name: Demo
+        run: |
+          scala-cli run             payments/scala/src/main/scala/Reconciliation.scala             payments/scala/src/main/scala/Main.scala
