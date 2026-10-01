@@ -150,6 +150,28 @@ The boundary is replaceable: `quoteFor`, `currentPrice`, and `historyFor` can be
 
 </details>
 
+## LedgerBridge — Ruby + Scala payments subsystem
+
+PocketAlpha now includes [`payments/`](payments/README.md), a separate payments-engineering lab built in **Ruby and Scala**.
+
+The Ruby side implements payment-intent state transitions, idempotency keys, capture/refund flows, and a double-entry ledger that rejects unbalanced postings. The Scala side reconciles internal payment state against settlement records and detects missing, duplicate, orphaned, arithmetic-mismatched, and amount-mismatched settlements.
+
+The CI pipeline also exercises a real cross-language contract:
+
+```text
+Ruby payment service
+   ↓
+internal_payments.csv + settlements.csv
+   ↓
+Scala reconciliation CLI
+   ↓
+matched payments / reconciliation issues
+```
+
+This is intentionally framed as hands-on learning in newer languages, not prior production Ruby/Scala experience.
+
+---
+
 ## API surface
 
 Public routes power discovery; private routes require `Authorization: Bearer <token>`.
