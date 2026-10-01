@@ -28,7 +28,8 @@ jobs:
       - name: Demo
         run: ruby payments/ruby/bin/demo.rb > /tmp/ledgerbridge-demo.json
       - name: Verify balanced demo
-        run: grep -q '"ledger_balanced": true' /tmp/ledgerbridge-demo.json
+        run: |
+          grep -q '"ledger_balanced": true' /tmp/ledgerbridge-demo.json
 
   scala:
     runs-on: ubuntu-latest
