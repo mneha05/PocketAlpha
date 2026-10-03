@@ -121,7 +121,8 @@ erDiagram
 
 | Area | Implementation | Why it matters |
 |---|---|---|
-| **State-driven Android UI** | A single immutable `PocketAlphaState`, exposed with `StateFlow` | Screens react predictably to async network, session, selection, and feedback changes. |
+| **MVVM Android architecture** | Jetpack Compose UI → `AppViewModel` → `PocketAlphaRepository` → suspend `ApiClient`, with immutable `StateFlow` | Keeps UI rendering, state management, data orchestration, and network I/O separated and testable. |
+| **Lifecycle-aware Coroutines** | `viewModelScope`, cancellable search jobs, `coroutineScope` + `async/await`, and `Dispatchers.IO` HTTP calls | Independent dashboard requests run concurrently while cancellation follows the ViewModel lifecycle. |
 | **Responsive search** | A cancellable coroutine job with a 250 ms debounce | Superseded searches do not continue producing stale work. |
 | **Native visualization** | Price history drawn with Compose Canvas | Keeps the chart lightweight and fully integrated with the design system. |
 | **Authentication** | Per-user salted `scrypt` hashes plus HMAC-signed, 24-hour bearer tokens | Passwords are never stored in plaintext; protected routes share one verification path. |
@@ -171,6 +172,24 @@ matched payments / reconciliation issues
 This is intentionally framed as hands-on learning in newer languages, not prior production Ruby/Scala experience.
 
 ---
+
+## Android MVVM + Coroutines
+
+PocketAlpha's Android client uses an explicit MVVM boundary:
+
+```text
+Jetpack Compose UI
+      ↓ collectAsStateWithLifecycle()
+AppViewModel
+      ↓ viewModelScope / StateFlow
+PocketAlphaRepository
+      ↓ coroutineScope + async/await
+ApiClient
+      ↓ withContext(Dispatchers.IO)
+HTTP API
+```
+
+The ViewModel owns immutable UI state and user intents, the repository coordinates independent remote calls with structured concurrency, and the API client performs blocking `HttpURLConnection` work on `Dispatchers.IO`. Search requests are debounced and previous jobs are cancelled when the query changes.
 
 ## API surface
 
