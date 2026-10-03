@@ -25,107 +25,195 @@ data class PocketAlphaState(
     val notice: String? = null
 )
 
+/**
+ * ViewModel in PocketAlpha's MVVM stack.
+ *
+ * Compose observes immutable StateFlow state while all data/network work is delegated
+ * to PocketAlphaRepository. viewModelScope gives every request lifecycle-aware
+ * cancellation when the ViewModel is cleared.
+ */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val sessions = SessionStore(application)
-    private val api = ApiClient(sessions)
+    private val repository = PocketAlphaRepository(ApiClient(sessions))
+
     private val _state = MutableStateFlow(PocketAlphaState())
     val state: StateFlow<PocketAlphaState> = _state.asStateFlow()
+
     private var searchJob: Job? = null
 
-    init { bootstrap() }
+    init {
+        bootstrap()
+    }
 
     private fun bootstrap() = viewModelScope.launch {
         _state.update { it.copy(booting = true, error = null) }
-        val market = runCatching { api.market() }.getOrNull()
+
+        val market = runCatching { repository.dashboard(authenticated = false).market }.getOrNull()
         if (sessions.token == null) {
             _state.update { it.copy(booting = false, market = market) }
             return@launch
         }
-        runCatching {
-            val user = api.me()
-            val watchlist = api.watchlist()
-            val portfolio = api.portfolio()
-            Triple(user, watchlist, portfolio)
-        }.onSuccess { (user, watchlist, portfolio) ->
-            _state.update { it.copy(booting = false, user = user, market = market, watchlist = watchlist, portfolio = portfolio) }
-        }.onFailure {
-            sessions.clear()
-            _state.update { it.copy(booting = false, market = market, user = null, error = "Your session expired. Please sign in again.") }
-        }
+
+        runCatching { repository.sessionSnapshot() }
+            .onSuccess { snapshot ->
+                _state.update {
+                    it.copy(
+                        booting = false,
+                        user = snapshot.user,
+                        market = market,
+                        watchlist = snapshot.watchlist,
+                        portfolio = snapshot.portfolio
+                    )
+                }
+            }
+            .onFailure {
+                sessions.clear()
+                _state.update {
+                    it.copy(
+                        booting = false,
+                        market = market,
+                        user = null,
+                        error = "Your session expired. Please sign in again."
+                    )
+                }
+            }
     }
 
-    fun login(email: String, password: String) = auth { api.login(email, password) }
-    fun register(name: String, email: String, password: String) = auth { api.register(name, email, password) }
+    fun login(email: String, password: String) =
+        auth { repository.login(email, password) }
+
+    fun register(name: String, email: String, password: String) =
+        auth { repository.register(name, email, password) }
 
     private fun auth(block: suspend () -> AuthResult) = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
         runCatching { block() }
             .onSuccess { result ->
-                val watchlist = api.watchlist()
-                val portfolio = api.portfolio()
-                _state.update { it.copy(loading = false, user = result.user, watchlist = watchlist, portfolio = portfolio) }
+                runCatching { repository.accountData() }
+                    .onSuccess { (watchlist, portfolio) ->
+                        _state.update {
+                            it.copy(
+                                loading = false,
+                                user = result.user,
+                                watchlist = watchlist,
+                                portfolio = portfolio
+                            )
+                        }
+                    }
+                    .onFailure(::showError)
             }
             .onFailure(::showError)
     }
 
     fun refresh() = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
-        runCatching {
-            val market = api.market()
-            val watchlist = if (_state.value.user != null) api.watchlist() else emptyList()
-            val portfolio = if (_state.value.user != null) api.portfolio() else Portfolio()
-            Triple(market, watchlist, portfolio)
-        }.onSuccess { (market, watchlist, portfolio) ->
-            _state.update { it.copy(loading = false, market = market, watchlist = watchlist, portfolio = portfolio) }
-        }.onFailure(::showError)
+
+        runCatching { repository.dashboard(authenticated = _state.value.user != null) }
+            .onSuccess { dashboard ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        market = dashboard.market,
+                        watchlist = dashboard.watchlist,
+                        portfolio = dashboard.portfolio
+                    )
+                }
+            }
+            .onFailure(::showError)
     }
 
     fun search(query: String) {
         searchJob?.cancel()
+
         if (query.isBlank()) {
             _state.update { it.copy(searchResults = emptyList()) }
             return
         }
+
         searchJob = viewModelScope.launch {
             delay(250)
-            runCatching { api.quotes(query) }
-                .onSuccess { results -> _state.update { it.copy(searchResults = results, error = null) } }
+            runCatching { repository.quotes(query) }
+                .onSuccess { results ->
+                    _state.update {
+                        it.copy(searchResults = results, error = null)
+                    }
+                }
                 .onFailure(::showError)
         }
     }
 
-    fun selectStock(symbol: String, range: String = _state.value.selectedRange) = viewModelScope.launch {
-        _state.update { it.copy(loading = true, error = null, selectedRange = range) }
-        runCatching { api.history(symbol, range) }
-            .onSuccess { history -> _state.update { it.copy(loading = false, selected = history) } }
+    fun selectStock(
+        symbol: String,
+        range: String = _state.value.selectedRange
+    ) = viewModelScope.launch {
+        _state.update {
+            it.copy(
+                loading = true,
+                error = null,
+                selectedRange = range
+            )
+        }
+
+        runCatching { repository.history(symbol, range) }
+            .onSuccess { history ->
+                _state.update {
+                    it.copy(loading = false, selected = history)
+                }
+            }
             .onFailure(::showError)
     }
 
-    fun closeStock() = _state.update { it.copy(selected = null) }
+    fun closeStock() =
+        _state.update { it.copy(selected = null) }
 
     fun toggleWatchlist(symbol: String) = viewModelScope.launch {
         val saved = _state.value.watchlist.any { it.symbol == symbol }
-        runCatching { if (saved) api.remove(symbol) else api.save(symbol) }
-            .onSuccess {
-                val list = api.watchlist()
-                _state.update { it.copy(watchlist = list, notice = if (saved) "$symbol removed" else "$symbol added") }
-            }.onFailure(::showError)
+
+        runCatching {
+            repository.toggleWatchlist(symbol, saved)
+        }.onSuccess { list ->
+            _state.update {
+                it.copy(
+                    watchlist = list,
+                    notice = if (saved) "$symbol removed" else "$symbol added"
+                )
+            }
+        }.onFailure(::showError)
     }
 
-    fun placeOrder(symbol: String, side: String, quantity: Double, onComplete: () -> Unit) = viewModelScope.launch {
+    fun placeOrder(
+        symbol: String,
+        side: String,
+        quantity: Double,
+        onComplete: () -> Unit
+    ) = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
-        runCatching { api.placeOrder(symbol, side, quantity) }
-            .onSuccess { portfolio ->
-                _state.update { it.copy(loading = false, portfolio = portfolio, notice = "$side order filled") }
-                onComplete()
-            }.onFailure(::showError)
+
+        runCatching {
+            repository.placeOrder(symbol, side, quantity)
+        }.onSuccess { portfolio ->
+            _state.update {
+                it.copy(
+                    loading = false,
+                    portfolio = portfolio,
+                    notice = "$side order filled"
+                )
+            }
+            onComplete()
+        }.onFailure(::showError)
     }
 
-    fun clearMessage() = _state.update { it.copy(error = null, notice = null) }
+    fun clearMessage() =
+        _state.update { it.copy(error = null, notice = null) }
 
     fun logout() {
         sessions.clear()
-        _state.update { PocketAlphaState(booting = false, market = it.market) }
+        _state.update {
+            PocketAlphaState(
+                booting = false,
+                market = it.market
+            )
+        }
     }
 
     private fun showError(throwable: Throwable) {
@@ -133,6 +221,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             is ApiException -> throwable.message
             else -> "Could not reach PocketAlpha. Check that the backend is running."
         }
-        _state.update { it.copy(loading = false, error = message) }
+
+        _state.update {
+            it.copy(
+                loading = false,
+                error = message
+            )
+        }
     }
 }
