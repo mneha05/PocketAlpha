@@ -1,5 +1,10 @@
 package com.nehamahesh.pocketalpha
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -37,6 +42,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Home
@@ -64,6 +70,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -182,6 +190,28 @@ private fun AlphaTextField(value: String, onValueChange: (String) -> Unit, label
 @Composable
 fun MainShell(state: PocketAlphaState, viewModel: AppViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.Home) }
+    val context = LocalContext.current
+    val bluetoothPermissions = remember { BluetoothMarketLink.requiredPermissions() }
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        if (BluetoothMarketLink.hasPermissions(context)) {
+            viewModel.scanBluetooth()
+        }
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    LaunchedEffect(Unit) {
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     Scaffold(
         containerColor = AlphaColors.Background,
         bottomBar = {
@@ -209,7 +239,19 @@ fun MainShell(state: PocketAlphaState, viewModel: AppViewModel) {
                 MainTab.Home -> HomeScreen(state, onRefresh = viewModel::refresh, onStock = { viewModel.selectStock(it) }, onDiscover = { tab = MainTab.Discover })
                 MainTab.Discover -> DiscoverScreen(state.searchResults, onSearch = viewModel::search, onStock = { viewModel.selectStock(it) })
                 MainTab.Watchlist -> WatchlistScreen(state.watchlist, onStock = { viewModel.selectStock(it) }, onDiscover = { tab = MainTab.Discover })
-                MainTab.Portfolio -> PortfolioScreen(state, onStock = { viewModel.selectStock(it) }, onLogout = viewModel::logout)
+                MainTab.Portfolio -> PortfolioScreen(
+                    state = state,
+                    onStock = { viewModel.selectStock(it) },
+                    onLogout = viewModel::logout,
+                    onBluetoothScan = {
+                        if (BluetoothMarketLink.hasPermissions(context)) {
+                            viewModel.scanBluetooth()
+                        } else {
+                            bluetoothPermissionLauncher.launch(bluetoothPermissions)
+                        }
+                    },
+                    onBluetoothConnect = viewModel::connectBluetooth
+                )
             }
         }
     }
@@ -328,7 +370,13 @@ fun WatchlistScreen(quotes: List<Quote>, onStock: (String) -> Unit, onDiscover: 
 }
 
 @Composable
-fun PortfolioScreen(state: PocketAlphaState, onStock: (String) -> Unit, onLogout: () -> Unit) {
+fun PortfolioScreen(
+    state: PocketAlphaState,
+    onStock: (String) -> Unit,
+    onLogout: () -> Unit,
+    onBluetoothScan: () -> Unit,
+    onBluetoothConnect: (String) -> Unit
+) {
     LazyColumn(Modifier.fillMaxSize().background(AlphaColors.Background)) {
         item {
             ScreenHeader("Paper investing", "Portfolio") {
@@ -353,6 +401,12 @@ fun PortfolioScreen(state: PocketAlphaState, onStock: (String) -> Unit, onLogout
         }
         item {
             Spacer(Modifier.height(24.dp))
+            BluetoothPanel(
+                state = state,
+                onScan = onBluetoothScan,
+                onConnect = onBluetoothConnect
+            )
+            Spacer(Modifier.height(24.dp))
             Text("Recent activity", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         }
         if (state.portfolio.orders.isEmpty()) item { Text("Your completed paper orders will appear here.", color = AlphaColors.Muted, modifier = Modifier.padding(20.dp)) }
@@ -366,6 +420,58 @@ fun PortfolioScreen(state: PocketAlphaState, onStock: (String) -> Unit, onLogout
             }
         }
         item { Spacer(Modifier.height(26.dp)); Box(Modifier.padding(horizontal = 20.dp)) { DisclosureCard() }; Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+
+@Composable
+private fun BluetoothPanel(
+    state: PocketAlphaState,
+    onScan: () -> Unit,
+    onConnect: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = AlphaColors.Surface)
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Bluetooth, null, tint = AlphaColors.Green)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Bluetooth Market Link", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        state.bluetoothStatus,
+                        color = AlphaColors.Muted,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                if (state.bluetoothScanning) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    TextButton(onClick = onScan) { Text("Scan") }
+                }
+            }
+
+            state.bluetoothDevices.take(5).forEach { device ->
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(device.name, fontWeight = FontWeight.Medium)
+                        Text(
+                            "${device.address} · ${device.rssi} dBm",
+                            color = AlphaColors.Muted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    TextButton(onClick = { onConnect(device.address) }) {
+                        Text("Connect")
+                    }
+                }
+            }
+        }
     }
 }
 
