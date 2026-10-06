@@ -117,6 +117,23 @@ erDiagram
     }
 ```
 
+## Motorola Android platform stack
+
+PocketAlpha includes a focused Android platform layer beyond the core Compose/MVVM app:
+
+| Platform area | Implementation |
+|---|---|
+| **Bluetooth LE** | Runtime-safe BLE scanning with RSSI discovery, Android 12+ `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT` handling, and GATT connection state callbacks. |
+| **Home-screen widget** | Jetpack Glance watchlist widget backed by a lightweight snapshot store and refreshed whenever the in-app watchlist changes or background work runs. |
+| **Background work** | WorkManager `CoroutineWorker` refreshes authenticated watchlist data on a network constraint, updates the widget, and emits movement alerts for large simulated price changes. |
+| **Biometric security** | `BiometricPrompt` gates restoration of an existing signed-in session using strong biometrics or device credential. |
+| **Credential storage** | Bearer tokens are encrypted with an AES/GCM key generated and stored in Android Keystore instead of plaintext `SharedPreferences`. |
+| **Architecture** | Bluetooth discoveries, connection status, alerts, and watchlist/widget sync flow through the existing `AndroidViewModel` + `StateFlow` MVVM layer. |
+
+The Android CI workflow builds the debug APK and explicitly verifies Glance, WorkManager, Android Keystore, BiometricPrompt, BLE scanning, and GATT connection code. Verified feature-stack run: [#37532866494](https://github.com/mneha05/PocketAlpha/actions/runs/37532866494).
+
+---
+
 ## Engineering highlights
 
 | Area | Implementation | Why it matters |
