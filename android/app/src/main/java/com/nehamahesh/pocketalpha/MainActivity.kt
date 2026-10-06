@@ -1,7 +1,6 @@
 package com.nehamahesh.pocketalpha
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
@@ -17,21 +16,38 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+    private var biometricUnlocked by mutableStateOf(false)
+    private var biometricPromptShown = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        biometricUnlocked = SessionStore(this).token == null
         setContent {
             PocketAlphaTheme {
                 val viewModel: AppViewModel = viewModel()
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 val snackbar = remember { SnackbarHostState() }
+
+                LaunchedEffect(biometricUnlocked) {
+                    if (!biometricUnlocked && !biometricPromptShown) {
+                        biometricPromptShown = true
+                        BiometricLock(this@MainActivity).authenticate(
+                            onSuccess = { biometricUnlocked = true },
+                            onUnavailable = { biometricUnlocked = true }
+                        )
+                    }
+                }
 
                 LaunchedEffect(state.error, state.notice) {
                     val message = state.error ?: state.notice
@@ -45,6 +61,7 @@ class MainActivity : ComponentActivity() {
                     AnimatedContent(
                         targetState = when {
                             state.booting -> "launch"
+                            state.user != null && !biometricUnlocked -> "locked"
                             state.user == null -> "auth"
                             state.selected != null -> "detail"
                             else -> "main"
@@ -54,6 +71,13 @@ class MainActivity : ComponentActivity() {
                     ) { destination ->
                         when (destination) {
                             "launch" -> LaunchScreen()
+                            "locked" -> BiometricUnlockScreen {
+                                biometricPromptShown = false
+                                BiometricLock(this@MainActivity).authenticate(
+                                    onSuccess = { biometricUnlocked = true },
+                                    onUnavailable = { biometricUnlocked = true }
+                                )
+                            }
                             "auth" -> AuthScreen(state, viewModel::login, viewModel::register, viewModel::clearMessage)
                             "detail" -> StockDetailScreen(state, viewModel)
                             else -> MainShell(state, viewModel)
