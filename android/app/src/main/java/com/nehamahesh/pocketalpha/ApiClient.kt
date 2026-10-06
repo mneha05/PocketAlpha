@@ -1,6 +1,9 @@
 package com.nehamahesh.pocketalpha
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -8,15 +11,69 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 class SessionStore(context: Context) {
     private val preferences = context.getSharedPreferences("pocketalpha_session", Context.MODE_PRIVATE)
+    private val keyAlias = "pocketalpha_session_key"
+
+    private val keyStore: KeyStore
+        get() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+
+    private fun getOrCreateKey(): SecretKey {
+        val existing = keyStore.getKey(keyAlias, null) as? SecretKey
+        if (existing != null) return existing
+
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                keyAlias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build()
+        )
+        return generator.generateKey()
+    }
 
     var token: String?
-        get() = preferences.getString("token", null)
-        set(value) { preferences.edit().putString("token", value).apply() }
+        get() {
+            val encrypted = preferences.getString("token_ciphertext", null) ?: return null
+            val iv = preferences.getString("token_iv", null) ?: return null
+            return runCatching {
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    getOrCreateKey(),
+                    GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))
+                )
+                String(
+                    cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)),
+                    Charsets.UTF_8
+                )
+            }.getOrNull()
+        }
+        set(value) {
+            if (value == null) {
+                clear()
+                return
+            }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+            val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+            preferences.edit()
+                .putString("token_ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+                .putString("token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                .remove("token")
+                .apply()
+        }
 
-    fun clear() = preferences.edit().clear().apply()
+    fun clear() = preferences.edit().remove("token_ciphertext").remove("token_iv").remove("token").apply()
 }
 
 class ApiClient(private val sessions: SessionStore) {
