@@ -21,6 +21,9 @@ data class PocketAlphaState(
     val searchResults: List<Quote> = emptyList(),
     val selected: StockHistory? = null,
     val selectedRange: String = "1D",
+    val bluetoothDevices: List<NearbyBluetoothDevice> = emptyList(),
+    val bluetoothStatus: String = "Bluetooth idle",
+    val bluetoothScanning: Boolean = false,
     val error: String? = null,
     val notice: String? = null
 )
@@ -40,6 +43,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<PocketAlphaState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private val bluetooth = BluetoothMarketLink(
+        context = application,
+        onDevicesChanged = { devices ->
+            _state.update { it.copy(bluetoothDevices = devices) }
+        },
+        onStatusChanged = { status ->
+            _state.update {
+                it.copy(
+                    bluetoothStatus = status,
+                    bluetoothScanning = status.startsWith("Scanning")
+                )
+            }
+        }
+    )
 
     init {
         bootstrap()
@@ -65,6 +82,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         portfolio = snapshot.portfolio
                     )
                 }
+                activateBackgroundFeatures(snapshot.watchlist)
             }
             .onFailure {
                 sessions.clear()
@@ -99,6 +117,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 portfolio = portfolio
                             )
                         }
+                        activateBackgroundFeatures(watchlist)
                     }
                     .onFailure(::showError)
             }
@@ -118,6 +137,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         portfolio = dashboard.portfolio
                     )
                 }
+                syncWidget(dashboard.watchlist)
             }
             .onFailure(::showError)
     }
@@ -178,6 +198,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     notice = if (saved) "$symbol removed" else "$symbol added"
                 )
             }
+            syncWidget(list)
         }.onFailure(::showError)
     }
 
@@ -206,14 +227,45 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearMessage() =
         _state.update { it.copy(error = null, notice = null) }
 
+    fun scanBluetooth() {
+        bluetooth.startScan()
+    }
+
+    fun connectBluetooth(address: String) {
+        bluetooth.connect(address)
+    }
+
+    private fun activateBackgroundFeatures(watchlist: List<Quote>) {
+        PriceAlertScheduler.schedule(getApplication())
+        syncWidget(watchlist)
+    }
+
+    private fun syncWidget(watchlist: List<Quote>) {
+        WidgetSnapshotStore(getApplication()).save(watchlist)
+        viewModelScope.launch {
+            PocketAlphaWidget().refresh(getApplication())
+        }
+    }
+
     fun logout() {
         sessions.clear()
+        PriceAlertScheduler.cancel(getApplication())
+        bluetooth.close()
+        WidgetSnapshotStore(getApplication()).clear()
+        viewModelScope.launch {
+            PocketAlphaWidget().refresh(getApplication())
+        }
         _state.update {
             PocketAlphaState(
                 booting = false,
                 market = it.market
             )
         }
+    }
+
+    override fun onCleared() {
+        bluetooth.close()
+        super.onCleared()
     }
 
     private fun showError(throwable: Throwable) {
