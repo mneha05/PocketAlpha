@@ -42,4 +42,10 @@ jobs:
           grep -q "async" android/app/src/main/java/com/nehamahesh/pocketalpha/PocketAlphaRepository.kt
           grep -q "withContext(Dispatchers.IO)" android/app/src/main/java/com/nehamahesh/pocketalpha/ApiClient.kt
           grep -q "collectAsStateWithLifecycle" android/app/src/main/java/com/nehamahesh/pocketalpha/MainActivity.kt
-          echo "MVVM + Coroutines architecture verified"
+          grep -q "GlanceAppWidget" android/app/src/main/java/com/nehamahesh/pocketalpha/PocketAlphaWidget.kt
+          grep -q "CoroutineWorker" android/app/src/main/java/com/nehamahesh/pocketalpha/PriceAlertWorker.kt
+          grep -q "AndroidKeyStore" android/app/src/main/java/com/nehamahesh/pocketalpha/ApiClient.kt
+          grep -q "BiometricPrompt" android/app/src/main/java/com/nehamahesh/pocketalpha/BiometricLock.kt
+          grep -q "bluetoothLeScanner" android/app/src/main/java/com/nehamahesh/pocketalpha/BluetoothMarketLink.kt
+          grep -q "connectGatt" android/app/src/main/java/com/nehamahesh/pocketalpha/BluetoothMarketLink.kt
+          echo "MVVM + Coroutines + widget + background work + security + BLE verified"
