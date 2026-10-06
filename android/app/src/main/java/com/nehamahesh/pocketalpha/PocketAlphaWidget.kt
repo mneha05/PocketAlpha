@@ -16,7 +16,6 @@ import androidx.glance.appwidget.updateAll
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.defaultWeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -112,7 +111,7 @@ private fun WatchlistWidgetContent(quotes: List<WidgetQuote>) {
                         style = TextStyle(fontWeight = FontWeight.Bold)
                     )
                     Text("$${"%.2f".format(quote.price)}")
-                    Spacer(GlanceModifier.defaultWeight())
+                    Spacer(GlanceModifier.width(10.dp))
                     Text("${if (quote.changePercent >= 0) "+" else ""}${"%.2f".format(quote.changePercent)}%")
                 }
             }
